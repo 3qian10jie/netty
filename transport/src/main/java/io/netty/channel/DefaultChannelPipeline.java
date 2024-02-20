@@ -812,6 +812,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelRegistered() {
+        // 注意这里的传参是 head
         AbstractChannelHandlerContext.invokeChannelRegistered(head);
         return this;
     }
@@ -1379,7 +1380,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) {
+            // 1. 这一步是 head 对于 channelRegistered 事件的处理。没有我们要关心的
             invokeHandlerAddedIfNeeded();
+            // 2. 向后传播 Inbound 事件
             ctx.fireChannelRegistered();
         }
 

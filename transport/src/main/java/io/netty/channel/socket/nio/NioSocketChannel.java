@@ -68,6 +68,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     private static SocketChannel newChannel(SelectorProvider provider, InternetProtocolFamily family) {
         try {
             SocketChannel channel = SelectorProviderUtil.newChannel(OPEN_SOCKET_CHANNEL_WITH_FAMILY, provider, family);
+            // 创建 SocketChannel 实例
             return channel == null ? provider.openSocketChannel() : channel;
         } catch (IOException e) {
             throw new ChannelException("Failed to open a socket.", e);
@@ -78,6 +79,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
      * Create a new instance
      */
     public NioSocketChannel() {
+        // SelectorProvider 实例用于创建 JDK 的 SocketChannel 实例
         this(DEFAULT_SELECTOR_PROVIDER);
     }
 
@@ -92,6 +94,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
      * Create a new instance using the given {@link SelectorProvider} and protocol family (supported only since JDK 15).
      */
     public NioSocketChannel(SelectorProvider provider, InternetProtocolFamily family) {
+        // newSocket(provider) 方法会创建 JDK 的 SocketChannel
         this(newChannel(provider, family));
     }
 

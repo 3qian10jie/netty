@@ -104,6 +104,15 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
                 RejectedExecutionHandlers.reject());
     }
 
+    /**
+     *
+     * @param nThreads 线程池中的线程数，也就是 NioEventLoop 的实例数量
+     * @param executor 构造一个线程池, 给 NioEventLoop 用的
+     * @param chooserFactory 线程池需要选择（choose）其中的一个线程来执行这个任务
+     * @param selectorProvider 通过它来实例化 JDK 的 Selector,每个线程池都持有一个 selectorProvider 实例
+     * @param selectStrategyFactory 线程池中线程的工作流程
+     * @param rejectedExecutionHandler 用于处理线程池中没有可用的线程来执行任务的情况
+     */
     public NioEventLoopGroup(int nThreads, Executor executor, EventExecutorChooserFactory chooserFactory,
                              final SelectorProvider selectorProvider,
                              final SelectStrategyFactory selectStrategyFactory,

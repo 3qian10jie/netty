@@ -114,11 +114,17 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     /**
      * The NIO {@link Selector}.
+     *
+     * 线程池中每一个线程都有一个 Selector 实例
      */
+
     private Selector selector;
     private Selector unwrappedSelector;
     private SelectedSelectionKeySet selectedKeys;
 
+    /**
+     * 由 NioEventLoopGroup 传进来，用于创建 Selector 实例
+     */
     private final SelectorProvider provider;
 
     private static final long AWAKE = -1L;
@@ -130,8 +136,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     //    other value T    when EL is waiting with wakeup scheduled at time T
     private final AtomicLong nextWakeupNanos = new AtomicLong(AWAKE);
 
+    /**
+     * select 操作的策略
+     */
     private final SelectStrategy selectStrategy;
 
+    /**
+     * IO 任务的执行时间比例，因为每个线程既有 IO 任务执行，也有非 IO 任务需要执行，所以该参数为了保证有足够时间是给 IO 的
+     */
     private volatile int ioRatio = 50;
     private int cancelledKeys;
     private boolean needsToSelectAgain;
@@ -139,10 +151,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     NioEventLoop(NioEventLoopGroup parent, Executor executor, SelectorProvider selectorProvider,
                  SelectStrategy strategy, RejectedExecutionHandler rejectedExecutionHandler,
                  EventLoopTaskQueueFactory taskQueueFactory, EventLoopTaskQueueFactory tailTaskQueueFactory) {
+        // newTaskQueue jdk的api去创建MpscQueue 最终返回的是MpscChunkedArrayQueue。
         super(parent, executor, false, newTaskQueue(taskQueueFactory), newTaskQueue(tailTaskQueueFactory),
                 rejectedExecutionHandler);
         this.provider = ObjectUtil.checkNotNull(selectorProvider, "selectorProvider");
         this.selectStrategy = ObjectUtil.checkNotNull(strategy, "selectStrategy");
+        // 开启 NIO 中最重要的组件：Selector
         final SelectorTuple selectorTuple = openSelector();
         this.selector = selectorTuple.selector;
         this.unwrappedSelector = selectorTuple.unwrappedSelector;
@@ -174,6 +188,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private SelectorTuple openSelector() {
         final Selector unwrappedSelector;
         try {
+            // 调用jdk的api创建一个selector
             unwrappedSelector = provider.openSelector();
         } catch (IOException e) {
             throw new ChannelException("failed to open a new selector", e);
@@ -183,6 +198,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             return new SelectorTuple(unwrappedSelector);
         }
 
+        // 通过反射获取selector的Class对象
         Object maybeSelectorImplClass = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
             public Object run() {
@@ -507,6 +523,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             try {
                 int strategy;
                 try {
+                    // selectStrategy 终于要派上用场了
+                    // 它有两个值，一个是 CONTINUE 一个是 SELECT
+                    // 针对这块代码，我们分析一下。
+                    // 1. 如果 taskQueue 不为空，也就是 hasTasks() 返回 true，
+                    //         那么执行一次 selectNow()，该方法不会阻塞
+                    // 2. 如果 hasTasks() 返回 false，那么执行 SelectStrategy.SELECT 分支，
+                    //    进行 select(...)，这块是带阻塞的
+                    // 这个很好理解，就是按照是否有任务在排队来决定是否可以进行阻塞
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
                     case SelectStrategy.CONTINUE:
@@ -523,6 +547,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         nextWakeupNanos.set(curDeadlineNanos);
                         try {
                             if (!hasTasks()) {
+                                // 如果 !hasTasks()，那么进到这个 select 分支，这里 select 带阻塞的
                                 strategy = select(curDeadlineNanos);
                             }
                         } finally {
@@ -545,24 +570,31 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 selectCnt++;
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
+                // 默认地，ioRatio 的值是 50
                 final int ioRatio = this.ioRatio;
                 boolean ranTasks;
                 if (ioRatio == 100) {
+                    // 如果 ioRatio 设置为 100，那么先执行 IO 操作，然后在 finally 块中执行 taskQueue 中的任务
                     try {
                         if (strategy > 0) {
+                            // 1. 执行 IO 操作。因为前面 select 以后，可能有些 channel 是需要处理的。
                             processSelectedKeys();
                         }
                     } finally {
                         // Ensure we always run tasks.
+                        // 2. 执行非 IO 任务，也就是 taskQueue 中的任务
                         ranTasks = runAllTasks();
                     }
                 } else if (strategy > 0) {
+                    // 如果 ioRatio 不是 100，那么根据 IO 操作耗时，限制非 IO 操作耗时
                     final long ioStartTime = System.nanoTime();
                     try {
+                        // 执行 IO 操作
                         processSelectedKeys();
                     } finally {
                         // Ensure we always run tasks.
                         final long ioTime = System.nanoTime() - ioStartTime;
+                        // 根据 IO 操作消耗的时间，计算执行非 IO 操作（runAllTasks）可以用多少时间.
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
                 } else {
@@ -713,9 +745,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKeysOptimized() {
         for (int i = 0; i < selectedKeys.size; ++i) {
+            // 取出 SelectionKey
             final SelectionKey k = selectedKeys.keys[i];
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
+            // 删除SelectionKey 防止重复处理
             selectedKeys.keys[i] = null;
 
             final Object a = k.attachment();

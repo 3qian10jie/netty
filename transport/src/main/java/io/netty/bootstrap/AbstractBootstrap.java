@@ -280,11 +280,13 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * Create a new {@link Channel} and bind it.
      */
     public ChannelFuture bind(SocketAddress localAddress) {
+        // 校验 group 和 channelFactory
         validate();
         return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        // 初始化并注册， 创建 channel
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
@@ -293,13 +295,19 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
+            // register已完成，直接调用doBind0
             ChannelPromise promise = channel.newPromise();
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         } else {
             // Registration future is almost always fulfilled already, but just in case it's not.
+            // register还未完成，注册listener回调，在回调中调用doBind0
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
             regFuture.addListener(new ChannelFutureListener() {
+                /**
+                  * channel register完成（注册到Selector并且调用了invokeHandlerAddedIfNeeded）之后，
+                  * 会调用safeSetSuccess，触发各个ChannelFutureListener，最终会调用到这里的operationComplete方法
+                  */
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
                     Throwable cause = future.cause();
@@ -323,7 +331,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            // 创建 channel ReflectiveChannelFactory 反射创建 NioServerSocketChannel
             channel = channelFactory.newChannel();
+            // 初始化 channel
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -336,6 +346,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        // 注册 channel
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {

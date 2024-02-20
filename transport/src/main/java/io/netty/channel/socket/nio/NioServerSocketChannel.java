@@ -55,11 +55,11 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
     private static final Method OPEN_SERVER_SOCKET_CHANNEL_WITH_FAMILY =
             SelectorProviderUtil.findOpenMethod("openServerSocketChannel");
-
     private static ServerSocketChannel newChannel(SelectorProvider provider, InternetProtocolFamily family) {
         try {
             ServerSocketChannel channel =
                     SelectorProviderUtil.newChannel(OPEN_SERVER_SOCKET_CHANNEL_WITH_FAMILY, provider, family);
+            // 调用 jdk 的 nio 接口 SelectorProvider 创建 ServerSocketChannel， netty进行封装
             return channel == null ? provider.openServerSocketChannel() : channel;
         } catch (IOException e) {
             throw new ChannelException("Failed to open a socket.", e);

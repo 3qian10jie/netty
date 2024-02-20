@@ -158,6 +158,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         this.addTaskWakesUp = addTaskWakesUp;
         this.maxPendingTasks = Math.max(16, maxPendingTasks);
         this.executor = ThreadExecutorMap.apply(executor, this);
+        // 子类没有透传 taskQueue 创建 LinkedBlockingQueue 阻塞队列
         taskQueue = newTaskQueue(this.maxPendingTasks);
         rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }
@@ -286,8 +287,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             if (scheduledTask == null) {
                 return true;
             }
+            // 加入普通的任务队列中
             if (!taskQueue.offer(scheduledTask)) {
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
+                // 加入失败， 没有足够的空间，则重新放入 定时任务队列中
                 scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
                 return false;
             }
@@ -456,7 +459,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
      */
     protected boolean runAllTasks(long timeoutNanos) {
+        // 任务聚合
         fetchFromScheduledTaskQueue();
+        // 取出一个任务
         Runnable task = pollTask();
         if (task == null) {
             afterRunningAllTasks();
@@ -832,9 +837,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     private void execute(Runnable task, boolean immediate) {
+        // 判断添加任务操作是否是当前NioEventLoop的线程发起的
         boolean inEventLoop = inEventLoop();
+        // 添加任务到之前介绍的 taskQueue 中，
         addTask(task);
         if (!inEventLoop) {
+            // 如果不是 NioEventLoop 内部线程提交的 task，那么判断下线程是否已经启动，没有的话，就启动线程
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -983,9 +991,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        // 它就是一开始我们实例化 NioEventLoop 的时候传进来的 ThreadPerTaskExecutor 的实例。它是每次来一个任务，创建一个线程的那种 executor。
+        // 一旦我们调用它的 execute 方法，它就会创建一个新的线程，所以这里终于会创建 Thread 实例
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                // 看这里，将 “executor” 中创建的这个线程设置为 NioEventLoop 的线程！！！
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();
@@ -994,6 +1005,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // 执行 SingleThreadEventExecutor 的 run() 方法，它在 NioEventLoop 中实现了
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

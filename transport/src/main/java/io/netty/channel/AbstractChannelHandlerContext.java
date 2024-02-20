@@ -142,12 +142,15 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     @Override
     public ChannelHandlerContext fireChannelRegistered() {
+        // findContextInbound() 方法会沿着 pipeline 找到下一个 Inbound 类型的 handler
         invokeChannelRegistered(findContextInbound(MASK_CHANNEL_REGISTERED));
         return this;
     }
 
     static void invokeChannelRegistered(final AbstractChannelHandlerContext next) {
+        // next 此时是 head; executor 是 NioEvenLoop
         EventExecutor executor = next.executor();
+        // 执行 head 的 invokeChannelRegistered()
         if (executor.inEventLoop()) {
             next.invokeChannelRegistered();
         } else {
@@ -166,6 +169,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
                 // DON'T CHANGE
                 // Duplex handlers implements both out/in interfaces causing a scalability issue
                 // see https://bugs.openjdk.org/browse/JDK-8180450
+                // handler() 方法此时会返回 head
                 final ChannelHandler handler = handler();
                 final DefaultChannelPipeline.HeadContext headContext = pipeline.head;
                 if (handler == headContext) {

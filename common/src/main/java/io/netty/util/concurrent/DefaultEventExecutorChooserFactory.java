@@ -33,13 +33,16 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
         if (isPowerOfTwo(executors.length)) {
+            // 如果线程池的线程数量是 2^n，使用位运算
             return new PowerOfTwoEventExecutorChooser(executors);
         } else {
+            // 如果不是，用取模的方式
             return new GenericEventExecutorChooser(executors);
         }
     }
 
     private static boolean isPowerOfTwo(int val) {
+        // 是否是 2^n
         return (val & -val) == val;
     }
 
@@ -53,6 +56,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 位运算的方式 选择一个线程
             return executors[idx.getAndIncrement() & executors.length - 1];
         }
     }
@@ -70,6 +74,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 用取模的方式 选择一个线程
             return executors[(int) Math.abs(idx.getAndIncrement() % executors.length)];
         }
     }

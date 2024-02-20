@@ -69,9 +69,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      *        the parent of this channel. {@code null} if there's no parent.
      */
     protected AbstractChannel(Channel parent) {
+        // 服务端 parent 为null，如果是客户端channel则不同
         this.parent = parent;
+        // 给每个 channel 分配一个唯一 id
         id = newId();
+        // 每个 channel 内部需要一个 Unsafe 的实例
+        // 返回 NioMessageUnsafe（服务端），如果是构造客户端channel，则返回NioSocketChannelUnsafe
         unsafe = newUnsafe();
+        // 每个 channel 内部都会创建一个 pipeline
+        // 创建 pipeline DefaultChannelPipeline
         pipeline = newChannelPipeline();
     }
 
@@ -474,12 +480,18 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 将这个 eventLoop 实例设置给这个 channel，从此这个 channel 就是有 eventLoop 的了
+            // 后续该 channel 中的所有异步操作，都要提交给这个 eventLoop 来执行
             AbstractChannel.this.eventLoop = eventLoop;
 
+            // 如果发起 register 动作的线程就是 eventLoop 实例中的线程，那么直接调用 register0(promise)
+            // 对于我们来说，它不会进入到这个分支，
+            //     之所以有这个分支，是因为我们是可以 unregister，然后再 register 的，后面再仔细看
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
                 try {
+                    // 否则，提交任务给 eventLoop，eventLoop 中的线程会负责调用 register0(promise)
                     eventLoop.execute(new Runnable() {
                         @Override
                         public void run() {
@@ -505,20 +517,28 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+                // 这里调用的是AbstractNioChannel.doRegister
+                // 这里将channel注册上去，并没有关注对应的事件（read/write事件）
+                // *** 进行 JDK 底层的操作：Channel 注册到 Selector 上 ***
                 doRegister();
                 neverRegistered = false;
                 registered = true;
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
+                // 调用handlerAdd事件，这里就会调用initChannel方法，设置channel.pipeline，也就是添加 ServerBootstrapAcceptor
                 pipeline.invokeHandlerAddedIfNeeded();
 
+                // 调用operationComplete回调
+                // 设置当前 promise 的状态为 success
                 safeSetSuccess(promise);
+                // 回调fireChannelRegistered
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
                 if (isActive()) {
                     if (firstRegistration) {
+                        // 回调fireChannelActive
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read

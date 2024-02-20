@@ -61,6 +61,7 @@ public class DefaultThreadFactory implements ThreadFactory {
     }
 
     public DefaultThreadFactory(Class<?> poolType, boolean daemon, int priority) {
+        // toPoolName 线程名字
         this(toPoolName(poolType), daemon, priority);
     }
 
@@ -90,6 +91,8 @@ public class DefaultThreadFactory implements ThreadFactory {
                     "priority: " + priority + " (expected: Thread.MIN_PRIORITY <= priority <= Thread.MAX_PRIORITY)");
         }
 
+        // 线程前缀 nioEventLoopGroup-poolId-
+        // AtomicInteger poolId 自增
         prefix = poolName + '-' + poolId.incrementAndGet() + '-';
         this.daemon = daemon;
         this.priority = priority;
@@ -102,6 +105,7 @@ public class DefaultThreadFactory implements ThreadFactory {
 
     @Override
     public Thread newThread(Runnable r) {
+        // 创建线程
         Thread t = newThread(FastThreadLocalRunnable.wrap(r), prefix + nextId.incrementAndGet());
         try {
             if (t.isDaemon() != daemon) {

@@ -43,6 +43,9 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
        public void run() { } // Do nothing
     };
 
+    /**
+     * 按照截至时间排序的 定时任务优先队列
+     */
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue;
 
     long nextTaskId;
@@ -154,10 +157,12 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     protected final Runnable pollScheduledTask(long nanoTime) {
         assert inEventLoop();
 
+        // 取出队列中第一个定时任务，离截至日期最近的任务
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
         if (scheduledTask == null || scheduledTask.deadlineNanos() - nanoTime > 0) {
             return null;
         }
+        // 从队列中删除已经取出来的任务
         scheduledTaskQueue.remove();
         scheduledTask.setConsumed();
         return scheduledTask;
